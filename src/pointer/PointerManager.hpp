@@ -128,6 +128,13 @@ namespace Pointer {
         bool hasCursor();
         void damageIfSoftware();
 
+        // Filters out sensor jitter: relative motion only counts as activity once it adds up to a deliberate movement.
+        bool     motionCountsAsActivity(const IPointer::SMotionEvent& event);
+        Vector2D m_motionAccum;
+        uint32_t m_motionWindowStartMs = 0;
+        uint32_t m_motionLastPassMs    = 0;
+        bool     m_motionPassed        = false;
+
         // closest valid point to a given one
         Vector2D closestValid(const Vector2D& pos);
 

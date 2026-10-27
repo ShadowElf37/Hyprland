@@ -1068,6 +1068,36 @@ SP<Render::ITexture> CPointerManager::cursorTextureForImage(SCursorImageData& im
     return m_currentCursorImage.surface ? m_currentCursorImage.surface->resource()->m_current.texture : nullptr;
 }
 
+bool CPointerManager::motionCountsAsActivity(const IPointer::SMotionEvent& event) {
+    static auto PTHRESHOLD = CConfigValue<Config::FLOAT>("misc:motion_activity_threshold");
+    static auto PWINDOW    = CConfigValue<Config::INTEGER>("misc:motion_activity_window");
+
+    if (*PTHRESHOLD <= 0)
+        return true;
+
+    // already moving deliberately: keep passing until the pointer pauses for a full window
+    if (m_motionPassed && event.timeMs - m_motionLastPassMs < (uint32_t)*PWINDOW) {
+        m_motionLastPassMs = event.timeMs;
+        return true;
+    }
+
+    // net displacement, so back-and-forth jitter cancels out
+    if (m_motionPassed || event.timeMs - m_motionWindowStartMs >= (uint32_t)*PWINDOW) {
+        m_motionPassed        = false;
+        m_motionAccum         = {};
+        m_motionWindowStartMs = event.timeMs;
+    }
+
+    m_motionAccum += event.unaccel;
+
+    if (m_motionAccum.size() < *PTHRESHOLD)
+        return false;
+
+    m_motionPassed     = true;
+    m_motionLastPassMs = event.timeMs;
+    return true;
+}
+
 void CPointerManager::attachPointer(SP<IPointer> pointer) {
     if (!pointer)
         return;
@@ -1080,8 +1110,11 @@ void CPointerManager::attachPointer(SP<IPointer> pointer) {
     listener->pointer = pointer;
 
     listener->destroy = pointer->m_events.destroy.listen([this] { detachPointer(nullptr); });
-    listener->motion  = pointer->m_pointerEvents.motion.listen([](const IPointer::SMotionEvent& event) {
+    listener->motion  = pointer->m_pointerEvents.motion.listen([this](const IPointer::SMotionEvent& event) {
         g_pInputManager->onMouseMoved(event);
+
+        if (!motionCountsAsActivity(event))
+            return;
 
         PROTO::idle->onActivity();
 
