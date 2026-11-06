@@ -116,6 +116,11 @@ void CIdleNotifyProtocol::onActivity() {
 }
 
 void CIdleNotifyProtocol::setInhibit(bool inhibited) {
+    // Callers recheck on every window map/unmap/focus/fullscreen change; only a real
+    // change of inhibit state may reset idle, or any window popping up resumes idle clients.
+    if (inhibited == isInhibited)
+        return;
+
     isInhibited = inhibited;
     for (auto const& n : m_notifications) {
         if (n->inhibitorsAreObeyed())
